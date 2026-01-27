@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ExternalLink, MessageSquare, TrendingUp, DollarSign } from "lucide-react";
+import { ChevronDown, ExternalLink, MessageSquare, TrendingUp, DollarSign, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { springSmooth, springSnappy, fadeUp } from "@/lib/motion";
 
@@ -15,6 +15,7 @@ export interface MiningResult {
   frequency: number;
   avgIntensity: number;
   avgWTP: number;
+  avgFeasibility: number;
   marketSize: string;
   category: string;
   sources: { title: string; url: string; platform: string }[];
@@ -30,6 +31,13 @@ function wtpLabel(avg: number): string {
   if (avg >= 6) return "High";
   if (avg >= 4) return "Medium";
   return "Low";
+}
+
+function feasibilityLabel(avg: number): string {
+  if (avg >= 8) return "Weekend project";
+  if (avg >= 6) return "2-4 weeks";
+  if (avg >= 4) return "1-2 months";
+  return "Hard solo";
 }
 
 export function ResultCard({ result, index }: ResultCardProps) {
@@ -54,6 +62,16 @@ export function ResultCard({ result, index }: ResultCardProps) {
       : wtp === "Medium"
       ? "text-amber-400"
       : "text-stone-400";
+
+  const feasibility = feasibilityLabel(result.avgFeasibility || 5);
+  const feasibilityColor =
+    (result.avgFeasibility || 5) >= 8
+      ? "text-emerald-400"
+      : (result.avgFeasibility || 5) >= 6
+      ? "text-sky-400"
+      : (result.avgFeasibility || 5) >= 4
+      ? "text-amber-400"
+      : "text-red-400";
 
   const marketLabel =
     result.marketSize === "large"
@@ -106,6 +124,10 @@ export function ResultCard({ result, index }: ResultCardProps) {
                 <DollarSign className="w-4 h-4" strokeWidth={1.5} />
                 <span>{wtp}</span>
                 <span className="text-stone-500">WTP</span>
+              </div>
+              <div className={`flex items-center gap-1.5 ${feasibilityColor}`}>
+                <Wrench className="w-4 h-4" strokeWidth={1.5} />
+                <span>{feasibility}</span>
               </div>
               <div className="flex items-center gap-1.5 text-stone-400">
                 <TrendingUp className="w-4 h-4" strokeWidth={1.5} />

@@ -28,6 +28,7 @@ interface Analysis {
   idea: string;
   market_size: "small" | "medium" | "large";
   category: string;
+  solo_feasibility: number;
 }
 
 interface AnalyzedPost extends Post {
@@ -42,6 +43,7 @@ interface ScoredOpportunity {
   frequency: number;
   avg_intensity: number;
   avg_willingness_to_pay: number;
+  avg_solo_feasibility: number;
   market_size: string;
   category: string;
   sources: Record<string, number>;
@@ -340,18 +342,34 @@ function buildAnalysisPrompt(posts: Post[]): string {
   return postsText;
 }
 
-const SYSTEM_PROMPT = `You are a SaaS opportunity analyst. Analyze these forum posts and comments to identify product/business opportunities.
+const SYSTEM_PROMPT = `You are an indie hacker opportunity scout. You find ideas that ONE PERSON can build and ship in 2-8 weeks.
 
-For each distinct pain point or opportunity you identify, return a JSON object with:
-- "idea": string — A concise SaaS/app idea that solves the problem (one sentence)
-- "painPoint": string — The core frustration or need expressed (direct quote or close paraphrase, in quotes)
+CRITICAL CONSTRAINTS — reject any idea that:
+- Already has well-funded competitors (Jira, Notion, Slack, etc.) unless it's a hyper-specific niche they ignore
+- Requires a team, enterprise sales, or significant infrastructure
+- Is a "platform" or "ecosystem" — too broad. Think TOOL, not platform.
+- Would take 6+ months to build an MVP
+
+GOOD ideas look like:
+- Niche workflow tools ("invoice generator for freelance translators")
+- Automation glue ("sync X to Y for Z people")
+- Painful micro-problems in specific industries
+- Browser extensions, CLI tools, small focused apps
+- Things where "it's surprisingly hard to do X" and X is specific
+
+For each distinct pain point, return a JSON object with:
+- "idea": string — A specific, buildable product idea (one sentence, be concrete)
+- "painPoint": string — The core frustration (direct quote or close paraphrase, in quotes)
 - "category": string — One of: productivity, finance, dev-tools, marketing, health, ecommerce, education, communication, HR, legal, other
 - "intensity": number 1-10 — How frustrated/desperate are they?
-- "willingnessToPay": number 1-10 — Based on language, how likely they'd pay for a solution?
+- "willingnessToPay": number 1-10 — Based on language, how likely they'd pay?
 - "marketSize": "small" | "medium" | "large" — Estimated addressable market
+- "soloFeasibility": number 1-10 — Can one dev build an MVP in under 2 months? (10 = weekend project, 1 = needs a team of 20)
 - "sourceIndices": number[] — Which posts (by index) relate to this opportunity
 
-Return ONLY a JSON array of these objects. No markdown, no explanation. If no clear opportunities, return [].`;
+Prefer SMALL markets with INTENSE pain over large markets with mild annoyance. A $5K MRR niche tool beats a "next Jira" fantasy.
+
+Return ONLY a JSON array. No markdown, no explanation. If no clear opportunities, return [].`;
 
 async function analyzePosts(posts: Post[]): Promise<AnalyzedPost[]> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -412,6 +430,7 @@ async function analyzePosts(posts: Post[]): Promise<AnalyzedPost[]> {
         intensity: number;
         willingnessToPay: number;
         marketSize: "small" | "medium" | "large";
+        soloFeasibility: number;
         sourceIndices: number[];
       }>;
 
@@ -430,6 +449,7 @@ async function analyzePosts(posts: Post[]): Promise<AnalyzedPost[]> {
                 idea: analysis.idea,
                 market_size: analysis.marketSize,
                 category: analysis.category,
+                solo_feasibility: analysis.soloFeasibility || 5,
               },
             });
           }
@@ -515,6 +535,11 @@ function scoreOpportunities(analyzedPosts: AnalyzedPost[]): ScoredOpportunity[] 
         (sum, p) => sum + (p.analysis?.willingness_to_pay || 0),
         0
       ) / frequency;
+    const avgSoloFeasibility =
+      posts.reduce(
+        (sum, p) => sum + (p.analysis?.solo_feasibility || 5),
+        0
+      ) / frequency;
 
     // Most common market size
     const sizeCount: Record<string, number> = {};
@@ -555,7 +580,10 @@ function scoreOpportunities(analyzedPosts: AnalyzedPost[]): ScoredOpportunity[] 
       return best;
     }, "");
 
-    const rawScore = frequency * avgIntensity * avgWTP * marketMultiplier;
+    // Feasibility is a gatekeeper: low feasibility tanks the score
+    // Formula: intensity × WTP × feasibility² × frequency, market is a tiebreaker
+    const feasibilityWeight = (avgSoloFeasibility / 10) ** 2; // 0.01 to 1.0 — squares it so low feasibility really hurts
+    const rawScore = frequency * avgIntensity * avgWTP * feasibilityWeight * (1 + (marketMultiplier - 1) * 0.3);
 
     // Source breakdown
     const sources: Record<string, number> = {};
@@ -577,6 +605,7 @@ function scoreOpportunities(analyzedPosts: AnalyzedPost[]): ScoredOpportunity[] 
       frequency,
       avg_intensity: Math.round(avgIntensity * 10) / 10,
       avg_willingness_to_pay: Math.round(avgWTP * 10) / 10,
+      avg_solo_feasibility: Math.round(avgSoloFeasibility * 10) / 10,
       market_size: marketSize,
       category,
       sources,
@@ -733,6 +762,7 @@ export async function POST(request: Request) {
             frequency: r.frequency,
             avgIntensity: r.avg_intensity,
             avgWTP: r.avg_willingness_to_pay,
+            avgFeasibility: r.avg_solo_feasibility,
             marketSize: r.market_size,
             category: r.category,
             sources: r.posts.map((p) => ({
