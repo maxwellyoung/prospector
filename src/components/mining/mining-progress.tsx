@@ -33,9 +33,11 @@ const stages: { id: MiningStage; label: string; mono: string }[] = [
 
 interface MiningProgressProps {
   currentStage: MiningStage;
+  statusMessage?: string;
+  counts?: { reddit?: number; hn?: number };
 }
 
-export function MiningProgress({ currentStage }: MiningProgressProps) {
+export function MiningProgress({ currentStage, statusMessage, counts }: MiningProgressProps) {
   if (currentStage === "idle" || currentStage === "complete") return null;
 
   const currentIndex = stages.findIndex((s) => s.id === currentStage);
@@ -61,6 +63,16 @@ export function MiningProgress({ currentStage }: MiningProgressProps) {
             const isActive = stage.id === currentStage;
             const isComplete = i < currentIndex;
             const isPending = i > currentIndex;
+
+            // Show count for completed stages
+            let countLabel = "";
+            if (isComplete) {
+              if (stage.id === "reddit" && counts?.reddit !== undefined) {
+                countLabel = ` — ${counts.reddit} posts`;
+              } else if (stage.id === "hackernews" && counts?.hn !== undefined) {
+                countLabel = ` — ${counts.hn} posts`;
+              }
+            }
 
             return (
               <motion.div
@@ -101,6 +113,11 @@ export function MiningProgress({ currentStage }: MiningProgressProps) {
                   }`}
                 >
                   {stage.label}
+                  {countLabel && (
+                    <span className="text-stone-500 font-mono text-xs ml-1">
+                      {countLabel}
+                    </span>
+                  )}
                 </span>
 
                 {/* Mono progress — CLI nod */}
@@ -120,6 +137,17 @@ export function MiningProgress({ currentStage }: MiningProgressProps) {
           })}
         </AnimatePresence>
       </div>
+
+      {/* Live status message */}
+      {statusMessage && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="mt-4 pt-3 border-t border-border/30"
+        >
+          <p className="text-xs font-mono text-stone-500">{statusMessage}</p>
+        </motion.div>
+      )}
     </motion.div>
   );
 }

@@ -9,10 +9,12 @@ import { springSmooth, springSnappy, fadeUp } from "@/lib/motion";
 export interface MiningResult {
   id: string;
   score: number;
-  title: string;
+  idea: string;
   painPoint: string;
-  mentions: number;
-  willingnessToPay: "Low" | "Medium" | "High" | "Very High";
+  quote?: string;
+  frequency: number;
+  avgIntensity: number;
+  avgWTP: number;
   marketSize: string;
   category: string;
   sources: { title: string; url: string; platform: string }[];
@@ -23,24 +25,42 @@ interface ResultCardProps {
   index: number;
 }
 
+function wtpLabel(avg: number): string {
+  if (avg >= 8) return "Very High";
+  if (avg >= 6) return "High";
+  if (avg >= 4) return "Medium";
+  return "Low";
+}
+
 export function ResultCard({ result, index }: ResultCardProps) {
   const [expanded, setExpanded] = useState(false);
 
+  // Normalize score to 1-10 for display
+  const displayScore = Math.min(10, Math.max(1, Math.round(Math.log2(result.score + 1))));
+
   const scoreColor =
-    result.score >= 8
+    displayScore >= 8
       ? "text-gold"
-      : result.score >= 6
+      : displayScore >= 6
       ? "text-emerald-400"
       : "text-stone-400";
 
+  const wtp = wtpLabel(result.avgWTP);
   const wtpColor =
-    result.willingnessToPay === "Very High"
+    wtp === "Very High"
       ? "text-gold"
-      : result.willingnessToPay === "High"
+      : wtp === "High"
       ? "text-emerald-400"
-      : result.willingnessToPay === "Medium"
+      : wtp === "Medium"
       ? "text-amber-400"
       : "text-stone-400";
+
+  const marketLabel =
+    result.marketSize === "large"
+      ? "Large market"
+      : result.marketSize === "medium"
+      ? "Medium market"
+      : "Niche market";
 
   return (
     <motion.div
@@ -57,7 +77,7 @@ export function ResultCard({ result, index }: ResultCardProps) {
             transition={springSnappy}
           >
             <span className={`font-serif text-2xl font-semibold ${scoreColor}`}>
-              {result.score}
+              {displayScore}
             </span>
           </motion.div>
 
@@ -65,7 +85,7 @@ export function ResultCard({ result, index }: ResultCardProps) {
           <div className="flex-1 min-w-0">
             {/* Title */}
             <h3 className="font-serif text-xl font-medium mb-2 leading-snug">
-              {result.title}
+              {result.idea}
             </h3>
 
             {/* Pain point quote */}
@@ -77,17 +97,19 @@ export function ResultCard({ result, index }: ResultCardProps) {
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <div className="flex items-center gap-1.5 text-stone-400">
                 <MessageSquare className="w-4 h-4" strokeWidth={1.5} />
-                <span className="font-mono">{result.mentions}</span>
-                <span className="text-stone-500">mentions</span>
+                <span className="font-mono">{result.frequency}</span>
+                <span className="text-stone-500">
+                  {result.frequency === 1 ? "mention" : "mentions"}
+                </span>
               </div>
               <div className={`flex items-center gap-1.5 ${wtpColor}`}>
                 <DollarSign className="w-4 h-4" strokeWidth={1.5} />
-                <span>{result.willingnessToPay}</span>
+                <span>{wtp}</span>
                 <span className="text-stone-500">WTP</span>
               </div>
               <div className="flex items-center gap-1.5 text-stone-400">
                 <TrendingUp className="w-4 h-4" strokeWidth={1.5} />
-                <span>{result.marketSize}</span>
+                <span>{marketLabel}</span>
               </div>
               <Badge
                 variant="secondary"
