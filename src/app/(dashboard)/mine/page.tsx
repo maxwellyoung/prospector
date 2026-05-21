@@ -6,21 +6,13 @@ export const metadata = {
   description: "Discover SaaS opportunities by mining frustration signals from the internet.",
 };
 
-function MinePageContent({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
+function MinePageContent() {
   // In a real app, we'd await searchParams and pass it.
   // For now, mining interface handles its own state.
   return <MiningInterface />;
 }
 
-export default function MinePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
+export default function MinePage() {
   return (
     <Suspense
       fallback={
@@ -29,7 +21,7 @@ export default function MinePage({
         </div>
       }
     >
-      <MinePageContent searchParams={searchParams} />
+      <MinePageContent />
     </Suspense>
   );
 }

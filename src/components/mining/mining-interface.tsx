@@ -380,8 +380,8 @@ export function MiningInterface({
               initial="hidden"
               animate="visible"
             >
-              {results.map((result, i) => (
-                <ResultCard key={result.id} result={result} index={i} />
+              {results.map((result) => (
+                <ResultCard key={result.id} result={result} />
               ))}
             </motion.div>
           </motion.div>

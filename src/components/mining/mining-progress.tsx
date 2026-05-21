@@ -62,8 +62,6 @@ export function MiningProgress({ currentStage, statusMessage, counts }: MiningPr
           {stages.map((stage, i) => {
             const isActive = stage.id === currentStage;
             const isComplete = i < currentIndex;
-            const isPending = i > currentIndex;
-
             // Show count for completed stages
             let countLabel = "";
             if (isComplete) {

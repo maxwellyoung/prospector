@@ -23,7 +23,6 @@ export interface MiningResult {
 
 interface ResultCardProps {
   result: MiningResult;
-  index: number;
 }
 
 function wtpLabel(avg: number): string {
@@ -40,7 +39,7 @@ function feasibilityLabel(avg: number): string {
   return "Hard solo";
 }
 
-export function ResultCard({ result, index }: ResultCardProps) {
+export function ResultCard({ result }: ResultCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   // Normalize score to 1-10 for display
