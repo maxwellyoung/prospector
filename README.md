@@ -41,6 +41,10 @@ Inspired by:
 - **History** — Persistent mining history with search
 - **Real Mining** — Currently uses mock data; API integration coming
 
+## Case Study
+
+See [CASE_STUDY.md](./CASE_STUDY.md) for the product framing, tradeoffs, and next steps.
+
 ## Getting Started
 
 ```bash

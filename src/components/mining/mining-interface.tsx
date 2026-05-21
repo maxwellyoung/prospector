@@ -32,6 +32,62 @@ export function MiningInterface({
   const [counts, setCounts] = useState<{ reddit?: number; hn?: number }>({});
   const abortRef = useRef<AbortController | null>(null);
 
+  const handleSSEEvent = useCallback((data: Record<string, unknown>) => {
+    const eventStage = data.stage as string;
+    const status = data.status as string;
+
+    if (data.message) {
+      setStatusMessage(data.message as string);
+    }
+
+    switch (eventStage) {
+      case "reddit":
+        if (status === "searching") {
+          setStage("reddit");
+        } else if (status === "done") {
+          setCounts((prev) => ({ ...prev, reddit: data.count as number }));
+        }
+        break;
+
+      case "hackernews":
+        if (status === "searching") {
+          setStage("hackernews");
+        } else if (status === "done") {
+          setCounts((prev) => ({ ...prev, hn: data.count as number }));
+        }
+        break;
+
+      case "analyze":
+        if (status === "processing") {
+          setStage("analyzing");
+        } else if (status === "error") {
+          setError(data.message as string);
+        }
+        break;
+
+      case "scoring":
+        if (status === "processing") {
+          setStage("scoring");
+        }
+        break;
+
+      case "complete":
+        setStage("complete");
+        if (data.results && Array.isArray(data.results)) {
+          setResults(data.results as MiningResult[]);
+        }
+        if (data.results && (data.results as unknown[]).length === 0 && data.message) {
+          setError(data.message as string);
+        }
+        break;
+
+      case "error":
+        setError(data.message as string);
+        setStage("idle");
+        break;
+    }
+  }, []);
+
   const startMining = useCallback(async () => {
     if (!query.trim() || stage !== "idle") return;
 
@@ -118,63 +174,7 @@ export function MiningInterface({
       setError(err instanceof Error ? err.message : "An unexpected error occurred");
       setStage("idle");
     }
-  }, [query, stage, depth]);
-
-  function handleSSEEvent(data: Record<string, unknown>) {
-    const eventStage = data.stage as string;
-    const status = data.status as string;
-
-    if (data.message) {
-      setStatusMessage(data.message as string);
-    }
-
-    switch (eventStage) {
-      case "reddit":
-        if (status === "searching") {
-          setStage("reddit");
-        } else if (status === "done") {
-          setCounts((prev) => ({ ...prev, reddit: data.count as number }));
-        }
-        break;
-
-      case "hackernews":
-        if (status === "searching") {
-          setStage("hackernews");
-        } else if (status === "done") {
-          setCounts((prev) => ({ ...prev, hn: data.count as number }));
-        }
-        break;
-
-      case "analyze":
-        if (status === "processing") {
-          setStage("analyzing");
-        } else if (status === "error") {
-          setError(data.message as string);
-        }
-        break;
-
-      case "scoring":
-        if (status === "processing") {
-          setStage("scoring");
-        }
-        break;
-
-      case "complete":
-        setStage("complete");
-        if (data.results && Array.isArray(data.results)) {
-          setResults(data.results as MiningResult[]);
-        }
-        if (data.results && (data.results as unknown[]).length === 0 && data.message) {
-          setError(data.message as string);
-        }
-        break;
-
-      case "error":
-        setError(data.message as string);
-        setStage("idle");
-        break;
-    }
-  }
+  }, [query, stage, depth, handleSSEEvent]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
