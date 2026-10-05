@@ -1,13 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { aiErrorResponse, createAiQuota, MAX_AI_OUTPUT_TOKENS, readAiJson } from "@/lib/ai-quota";
+import { validateMineRequest } from "@/lib/mine-request";
+
+const reserveQuota = createAiQuota("prospector");
+export const runtime = "nodejs";
 
 // ===== Types =====
 
-interface MineRequest {
-  query: string;
-  niche?: string;
-  depth?: "quick" | "deep";
-  subreddits?: string[];
-}
 
 interface Post {
   source: "reddit" | "hackernews";
@@ -88,7 +87,8 @@ const MARKET_MULTIPLIER: Record<string, number> = {
   large: 3,
 };
 
-const MAX_BATCH_SIZE = 30;
+const MAX_BATCH_SIZE = 20;
+const MAX_ANALYSIS_POSTS = 20;
 const MAX_TEXT_LENGTH = 500;
 const MODEL = "claude-sonnet-4-20250514";
 
@@ -334,8 +334,8 @@ function buildAnalysisPrompt(posts: Post[]): string {
     .map((p, i) => {
       const text = p.text ? p.text.slice(0, MAX_TEXT_LENGTH) : "";
       const source =
-        p.source === "reddit" ? `Reddit (r/${p.subreddit})` : "Hacker News";
-      return `[${i}] Source: ${source}\nTitle: ${p.title}\nBody: ${text}\nScore: ${p.score} | Comments: ${p.num_comments}`;
+        p.source === "reddit" ? `Reddit (r/${p.subreddit?.slice(0, 21)})` : "Hacker News";
+      return `[${i}] Source: ${source}\nTitle: ${p.title.slice(0, 200)}\nBody: ${text}\nScore: ${p.score} | Comments: ${p.num_comments}`;
     })
     .join("\n\n");
 
@@ -383,11 +383,11 @@ async function analyzePosts(posts: Post[]): Promise<AnalyzedPost[]> {
   const meaningful = posts.filter(
     (p) =>
       (p.title && p.title.length > 10) || (p.text && p.text.length > 20)
-  );
+  ).slice(0, MAX_ANALYSIS_POSTS);
 
   if (meaningful.length === 0) return [];
 
-  const client = new Anthropic({ apiKey });
+  const client = new Anthropic({ apiKey, maxRetries: 0 });
 
   // Batch posts
   const batches: Post[][] = [];
@@ -402,7 +402,7 @@ async function analyzePosts(posts: Post[]): Promise<AnalyzedPost[]> {
       const postsText = buildAnalysisPrompt(batch);
       const message = await client.messages.create({
         model: MODEL,
-        max_tokens: 4096,
+        max_tokens: MAX_AI_OUTPUT_TOKENS,
         system: SYSTEM_PROMPT,
         messages: [
           {
@@ -590,7 +590,7 @@ function scoreOpportunities(analyzedPosts: AnalyzedPost[]): ScoredOpportunity[] 
     posts.forEach((p) => {
       const src =
         p.source === "reddit"
-          ? `r/${p.subreddit}`
+          ? `r/${p.subreddit?.slice(0, 21)}`
           : p.source === "hackernews"
           ? "HN"
           : "Web";
@@ -621,7 +621,7 @@ function scoreOpportunities(analyzedPosts: AnalyzedPost[]): ScoredOpportunity[] 
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as MineRequest;
+    const body = validateMineRequest(await readAiJson(request));
     const { query, niche, depth = "quick", subreddits } = body;
 
     if (!query || !query.trim()) {
@@ -631,6 +631,8 @@ export async function POST(request: Request) {
       });
     }
 
+    await reserveQuota(request);
+
     // Check API key early
     if (!process.env.ANTHROPIC_API_KEY) {
       return new Response(
@@ -638,7 +640,7 @@ export async function POST(request: Request) {
           error: "ANTHROPIC_API_KEY is not configured. Set it in your environment variables.",
         }),
         {
-          status: 500,
+          status: 503,
           headers: { "Content-Type": "application/json" },
         }
       );
@@ -693,7 +695,7 @@ export async function POST(request: Request) {
             count: hnPosts.length,
           });
 
-          const allPosts = [...redditPosts, ...hnPosts];
+          const allPosts = [...redditPosts, ...hnPosts].slice(0, MAX_ANALYSIS_POSTS);
 
           if (allPosts.length === 0) {
             sendSSE(controller, encoder, {
@@ -701,7 +703,6 @@ export async function POST(request: Request) {
               results: [],
               message: "No posts found. Try a different query.",
             });
-            controller.close();
             return;
           }
 
@@ -728,7 +729,6 @@ export async function POST(request: Request) {
               results: [],
               message,
             });
-            controller.close();
             return;
           }
 
@@ -768,7 +768,7 @@ export async function POST(request: Request) {
             sources: r.posts.map((p) => ({
               title:
                 p.source === "reddit"
-                  ? `r/${p.subreddit} — ${p.title}`
+                  ? `r/${p.subreddit?.slice(0, 21)} — ${p.title}`
                   : p.title,
               url: p.hn_url || p.url,
               platform: p.source === "reddit" ? "Reddit" : "HN",
@@ -801,15 +801,6 @@ export async function POST(request: Request) {
       },
     });
   } catch (err) {
-    console.error("Mine API error:", err);
-    return new Response(
-      JSON.stringify({
-        error: err instanceof Error ? err.message : "Internal server error",
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return aiErrorResponse(err);
   }
 }

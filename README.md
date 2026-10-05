@@ -97,3 +97,37 @@ src/
 ---
 
 Built by [Maxwell Young](https://github.com/maxwellyoung)
+
+## AI quotas and configuration
+
+`POST /api/mine` reserves one daily request before searching or calling Anthropic.
+The per-IP and global caps default to 20 and 500 attempts per UTC day. Reservations
+are atomic and are retained after errors; the model SDK does not retry paid calls.
+Each request analyzes at most 20 posts in one model call, with 500 body characters
+and 200 title characters per post, and at most 2,000 output tokens. JSON request
+bodies are limited to 16 KiB, queries to 200 characters, niches to 100, and subreddit
+lists to 10 valid names.
+
+Set these **server-side** in Vercel Project Settings → Environment Variables for
+Production and Preview (and `.env.local` for local development):
+
+- `ANTHROPIC_API_KEY`: model key.
+- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`: an existing durable
+  Upstash Redis database's HTTPS REST endpoint and writable token. Legacy
+  `KV_REST_API_URL` + `KV_REST_API_TOKEN` are also accepted. Do not mix pairs.
+- `AI_IP_DAILY_LIMIT` / `AI_GLOBAL_DAILY_LIMIT`: optional positive integer caps.
+
+All deployments of this app should use the same store and limits to share the
+budget. Disable Redis eviction so quota keys cannot be removed before reset.
+Missing, partial, invalid or unreachable quota configuration returns **503** before
+any paid call; exhausted quotas return **429** with `Retry-After`. Only explicit
+local `NODE_ENV=development` without Vercel may use an in-memory fallback. On
+Vercel the platform-overwritten `x-forwarded-for` identifies clients; other hosts
+conservatively share one client bucket, ignoring untrusted forwarded headers.
+No datastore or backend is provisioned by this change.
+
+The helper uses [Upstash REST](https://upstash.com/docs/redis/features/restapi)
+with one Lua EVAL so both daily counters are checked/reserved together, rather than
+separate limiter calls. See [Vercel request headers](https://vercel.com/docs/headers/request-headers)
+for the trusted proxy boundary. Run `npm test`, `npm run lint`, `npm run typecheck`
+and `npm run build` before merging.
